@@ -46,13 +46,12 @@ enum SDK: String, Codable {
         }
     }
 
-    func extractForSimulators() -> Set<SDK> {
+    var simulator: SDK? {
         switch self {
-        case .macOS: return [.macOS]
-        case .iOS: return [.iOS, .iOSSimulator]
-        case .tvOS: return [.tvOS, .tvOSSimulator]
-        case .watchOS: return [.watchOS, .watchOSSimulator]
-        default: return [self]
+        case .iOS: return .iOSSimulator
+        case .tvOS: return .tvOSSimulator
+        case .watchOS: return .watchOSSimulator
+        default: return nil
         }
     }
 

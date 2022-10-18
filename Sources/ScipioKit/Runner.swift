@@ -135,33 +135,34 @@ public struct Runner {
         try fileSystem.createDirectory(outputDir, recursive: true)
 
         let (isCacheEnabled, cacheStorage) = options.cacheMode.extract()
-        let compiler = Compiler(rootPackage: package,
+        let buildSystem = BuildSystem(rootPackage: package,
                                 cacheStorage: cacheStorage,
                                 executor: ProcessExecutor(),
                                 fileSystem: fileSystem)
         do {
-            switch mode {
-            case .createPackage:
-                try await compiler.build(
-                    mode: .createPackage,
-                    buildOptions: buildOptions,
-                    outputDir: outputDir,
-                    isCacheEnabled: isCacheEnabled
-                )
-            case .prepareDependencies:
-                try await compiler.build(
-                    mode: .prepareDependencies,
-                    buildOptions: buildOptions,
-                    outputDir: outputDir,
-                    isCacheEnabled: isCacheEnabled
-                )
-            }
+            try await buildSystem.build(
+                mode: mode.buildMode,
+                buildOptions: buildOptions,
+                outputDir: outputDir,
+                isCacheEnabled: isCacheEnabled
+            )
             logger.info("❇️ Succeeded.", metadata: .color(.green))
         } catch {
             logger.error("Something went wrong during building", metadata: .color(.red))
             logger.error("Please execute with --verbose option.", metadata: .color(.red))
             logger.error("\(error.localizedDescription)")
             throw Error.compilerError(error)
+        }
+    }
+}
+
+extension Runner.Mode {
+    var buildMode: BuildMode {
+        switch self {
+        case .createPackage:
+            return .createPackage
+        case .prepareDependencies:
+            return .prepareDependencies
         }
     }
 }
