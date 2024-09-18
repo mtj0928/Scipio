@@ -70,7 +70,7 @@ struct FrameworkProducer {
 
         let targets = try descriptionPackage.resolveBuildProducts()
         try await processAllTargets(
-            buildProducts: targets.filter { [.library, .binary].contains($0.target.type) }
+            buildProducts: targets.filter { [.library, .binary, .macro].contains($0.target.type) }
         )
     }
 
@@ -88,13 +88,14 @@ struct FrameworkProducer {
         }
     }
 
+    // ここにマクロがくる
     private func processAllTargets(buildProducts: [BuildProduct]) async throws {
         guard !buildProducts.isEmpty else {
             return
         }
 
         let allTargets = OrderedSet(buildProducts.compactMap { buildProduct -> CacheSystem.CacheTarget? in
-            guard [.library, .binary].contains(buildProduct.target.type) else {
+            guard [.library, .binary, .macro].contains(buildProduct.target.type) else {
                 assertionFailure("Invalid target type")
                 return nil
             }
@@ -110,6 +111,8 @@ struct FrameworkProducer {
                                       outputDirectory: outputDir,
                                       storage: cacheStorage)
         let cacheEnabledTargets: Set<CacheSystem.CacheTarget>
+
+        // キャッシュの確認
         if cacheMode.isConsumingCacheEnabled {
             cacheEnabledTargets = await restoreAllAvailableCaches(
                 availableTargets: Set(allTargets),
@@ -122,11 +125,16 @@ struct FrameworkProducer {
         let targetsToBuild = allTargets.subtracting(cacheEnabledTargets)
 
         for target in targetsToBuild {
-            try await buildXCFrameworks(
-                target,
-                outputDir: outputDir,
-                buildOptionsMatrix: buildOptionsMatrix
-            )
+            if target.buildProduct.target.type == .macro {
+
+            } else {
+                // ここでマクロと分岐する？
+                try await buildXCFrameworks(
+                    target,
+                    outputDir: outputDir,
+                    buildOptionsMatrix: buildOptionsMatrix
+                )
+            }
         }
 
         if isProducingCacheEnabled {
@@ -252,6 +260,43 @@ struct FrameworkProducer {
                 fatalError("Unexpected failure")
             }
             #endif
+            let binaryExtractor = BinaryExtractor(
+                package: descriptionPackage,
+                outputDirectory: outputDir,
+                fileSystem: fileSystem
+            )
+            try binaryExtractor.extract(of: binaryTarget, overwrite: overwrite)
+            logger.info("✅ Copy \(binaryTarget.c99name).xcframework", metadata: .color(.green))
+        default:
+            fatalError("Unexpected target type \(product.target.type)")
+        }
+
+        return []
+    }
+
+    @discardableResult
+    private func buildMacroBinary(
+        _ target: CacheSystem.CacheTarget,
+        outputDir: URL,
+        buildOptionsMatrix: [String: BuildOptions]
+    ) async throws -> Set<CacheSystem.CacheTarget> {
+        let product = target.buildProduct
+        let buildOptions = target.buildOptions
+
+        switch product.target.type {
+        case .library:
+            let compiler = PIFCompiler(
+                descriptionPackage: descriptionPackage,
+                buildOptions: buildOptions,
+                buildOptionsMatrix: buildOptionsMatrix
+            )
+            try await compiler.createXCFramework(buildProduct: product,
+                                                 outputDirectory: outputDir,
+                                                 overwrite: overwrite)
+        case .binary:
+            guard let binaryTarget = product.target.underlying as? BinaryModule else {
+                fatalError("Unexpected failure")
+            }
             let binaryExtractor = BinaryExtractor(
                 package: descriptionPackage,
                 outputDirectory: outputDir,
