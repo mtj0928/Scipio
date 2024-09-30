@@ -45,7 +45,12 @@ struct PIFCompiler: Compiler {
         return try await toolchainGenerator.makeToolChain(sdk: sdk)
     }
 
-    func createXCFramework(buildProduct: BuildProduct, outputDirectory: URL, overwrite: Bool) async throws {
+    func createXCFramework(
+        buildProduct: BuildProduct,
+        loadPluginExecutable: [String],
+        outputDirectory: URL,
+        overwrite: Bool
+    ) async throws {
         let sdks = buildOptions.sdks
         let sdkNames = sdks.map(\.displayName).joined(separator: ", ")
         let target = buildProduct.target
@@ -74,6 +79,7 @@ struct PIFCompiler: Compiler {
             let buildParametersPath = try buildParametersGenerator.generate(
                 for: sdk,
                 buildParameters: buildParameters,
+                loadPluginExecutables: loadPluginExecutable,
                 destinationDir: descriptionPackage.workspaceDirectory
             )
 

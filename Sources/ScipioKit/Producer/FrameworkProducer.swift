@@ -68,10 +68,13 @@ struct FrameworkProducer {
     func produce() async throws {
         try await clean()
 
-        let targets = try descriptionPackage.resolveBuildProducts()
-        try await processAllTargets(
-            buildProducts: targets.filter { [.library, .binary, .macro].contains($0.target.type) }
-        )
+        let graph = try descriptionPackage.resolveBuildProductsDependencyGraph()
+
+        for macroTree in graph.macroTrees {
+            try await processMacroTarget(macroTree: macroTree)
+        }
+
+        try await processAllTargets(root: graph.tree, macros: [:])
     }
 
     private func overriddenBuildOption(for buildProduct: BuildProduct) -> BuildOptions {
@@ -88,15 +91,15 @@ struct FrameworkProducer {
         }
     }
 
-    // ここにマクロがくる
-    private func processAllTargets(buildProducts: [BuildProduct]) async throws {
-        guard !buildProducts.isEmpty else {
-            return
-        }
+    private func processMacroTarget(macroTree: ScipioBuildNode) async throws {
 
+    }
+
+    private func processAllTargets(root: ScipioBuildNode, macros: [String: URL]) async throws {
+        let buildProducts = root.orderedDependencies().dropFirst().reversed()
         let allTargets = OrderedSet(buildProducts.compactMap { buildProduct -> CacheSystem.CacheTarget? in
-            guard [.library, .binary, .macro].contains(buildProduct.target.type) else {
-                assertionFailure("Invalid target type")
+            guard [.library, .binary].contains(buildProduct.target.type) else {
+//                assertionFailure("Invalid target type")
                 return nil
             }
             let buildOptionsForProduct = overriddenBuildOption(for: buildProduct)
@@ -125,16 +128,13 @@ struct FrameworkProducer {
         let targetsToBuild = allTargets.subtracting(cacheEnabledTargets)
 
         for target in targetsToBuild {
-            if target.buildProduct.target.type == .macro {
-
-            } else {
-                // ここでマクロと分岐する？
-                try await buildXCFrameworks(
-                    target,
-                    outputDir: outputDir,
-                    buildOptionsMatrix: buildOptionsMatrix
-                )
-            }
+            let macroNodes = root.retrieveNode(for: target.buildProduct)?.macroNodes() ?? []
+            try await buildXCFrameworks(
+                target,
+                loadPluginExecutables: macroNodes.compactMap { macros[$0.target.name]?.absoluteString },
+                outputDir: outputDir,
+                buildOptionsMatrix: buildOptionsMatrix
+            )
         }
 
         if isProducingCacheEnabled {
@@ -234,6 +234,7 @@ struct FrameworkProducer {
     @discardableResult
     private func buildXCFrameworks(
         _ target: CacheSystem.CacheTarget,
+        loadPluginExecutables: [String],
         outputDir: URL,
         buildOptionsMatrix: [String: BuildOptions]
     ) async throws -> Set<CacheSystem.CacheTarget> {
@@ -247,9 +248,12 @@ struct FrameworkProducer {
                 buildOptions: buildOptions,
                 buildOptionsMatrix: buildOptionsMatrix
             )
-            try await compiler.createXCFramework(buildProduct: product,
-                                                 outputDirectory: outputDir,
-                                                 overwrite: overwrite)
+            try await compiler.createXCFramework(
+                buildProduct: product,
+                loadPluginExecutable: loadPluginExecutables,
+                outputDirectory: outputDir,
+                overwrite: overwrite
+            )
         case .binary:
             #if compiler(>=6.0)
             guard let binaryTarget = product.target.underlying as? BinaryModule else {
@@ -260,43 +264,6 @@ struct FrameworkProducer {
                 fatalError("Unexpected failure")
             }
             #endif
-            let binaryExtractor = BinaryExtractor(
-                package: descriptionPackage,
-                outputDirectory: outputDir,
-                fileSystem: fileSystem
-            )
-            try binaryExtractor.extract(of: binaryTarget, overwrite: overwrite)
-            logger.info("✅ Copy \(binaryTarget.c99name).xcframework", metadata: .color(.green))
-        default:
-            fatalError("Unexpected target type \(product.target.type)")
-        }
-
-        return []
-    }
-
-    @discardableResult
-    private func buildMacroBinary(
-        _ target: CacheSystem.CacheTarget,
-        outputDir: URL,
-        buildOptionsMatrix: [String: BuildOptions]
-    ) async throws -> Set<CacheSystem.CacheTarget> {
-        let product = target.buildProduct
-        let buildOptions = target.buildOptions
-
-        switch product.target.type {
-        case .library:
-            let compiler = PIFCompiler(
-                descriptionPackage: descriptionPackage,
-                buildOptions: buildOptions,
-                buildOptionsMatrix: buildOptionsMatrix
-            )
-            try await compiler.createXCFramework(buildProduct: product,
-                                                 outputDirectory: outputDir,
-                                                 overwrite: overwrite)
-        case .binary:
-            guard let binaryTarget = product.target.underlying as? BinaryModule else {
-                fatalError("Unexpected failure")
-            }
             let binaryExtractor = BinaryExtractor(
                 package: descriptionPackage,
                 outputDirectory: outputDir,

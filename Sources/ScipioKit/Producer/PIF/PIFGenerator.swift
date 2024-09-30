@@ -48,7 +48,7 @@ struct PIFGenerator {
         // A constructor of PIFBuilder is concealed. So use JSON is only way to get PIF structs.
         let jsonString = try PIFBuilder.generatePIF(
             buildParameters: buildParameters,
-            packageGraph: descriptionPackage.graph,
+            packageGraph: removeMacroInformation(from: descriptionPackage.graph),
             fileSystem: localFileSystem,
             observabilityScope: makeObservabilitySystem().topScope,
             preservePIFModelStructure: true
@@ -320,7 +320,7 @@ extension PIF.TopLevelObject: Decodable {
 
 #endif
 
-extension AbsolutePath {
+extension TSCBasic.AbsolutePath {
     fileprivate var moduleEscapedPathString: String {
         return self.pathString.replacingOccurrences(of: "\\", with: "\\\\")
     }
