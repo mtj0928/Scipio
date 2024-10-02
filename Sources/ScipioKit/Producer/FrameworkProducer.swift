@@ -4,9 +4,11 @@ import PackageGraph
 import PackageModel
 import Collections
 import protocol TSCBasic.FileSystem
+import struct TSCBasic.AbsolutePath
 import var TSCBasic.localFileSystem
 
 struct FrameworkProducer {
+    private let macroProducer: MacroProducer
     private let descriptionPackage: DescriptionPackage
     private let baseBuildOptions: BuildOptions
     private let buildOptionsMatrix: [String: BuildOptions]
@@ -53,6 +55,7 @@ struct FrameworkProducer {
         overwrite: Bool,
         outputDir: URL,
         toolchainEnvironment: [String: String]? = nil,
+        macroProducer: MacroProducer,
         fileSystem: any FileSystem = localFileSystem
     ) {
         self.descriptionPackage = descriptionPackage
@@ -62,6 +65,7 @@ struct FrameworkProducer {
         self.overwrite = overwrite
         self.outputDir = outputDir
         self.toolchainEnvironment = toolchainEnvironment
+        self.macroProducer = macroProducer
         self.fileSystem = fileSystem
     }
 
@@ -69,12 +73,8 @@ struct FrameworkProducer {
         try await clean()
 
         let graph = try descriptionPackage.resolveBuildProductsDependencyGraph()
-
-        for macroTree in graph.macroTrees {
-            try await processMacroTarget(macroTree: macroTree)
-        }
-
-        try await processAllTargets(root: graph.tree, macros: [:])
+        let pluginExecutables = try await macroProducer.processMacroTargets(graph: graph)
+        try await processAllTargets(root: graph.tree, pluginExecutables: pluginExecutables)
     }
 
     private func overriddenBuildOption(for buildProduct: BuildProduct) -> BuildOptions {
@@ -91,15 +91,10 @@ struct FrameworkProducer {
         }
     }
 
-    private func processMacroTarget(macroTree: ScipioBuildNode) async throws {
-
-    }
-
-    private func processAllTargets(root: ScipioBuildNode, macros: [String: URL]) async throws {
+    private func processAllTargets(root: ScipioBuildNode, pluginExecutables: [String: PluginExecutable]) async throws {
         let buildProducts = root.orderedDependencies().dropFirst().reversed()
         let allTargets = OrderedSet(buildProducts.compactMap { buildProduct -> CacheSystem.CacheTarget? in
             guard [.library, .binary].contains(buildProduct.target.type) else {
-//                assertionFailure("Invalid target type")
                 return nil
             }
             let buildOptionsForProduct = overriddenBuildOption(for: buildProduct)
@@ -131,7 +126,7 @@ struct FrameworkProducer {
             let macroNodes = root.retrieveNode(for: target.buildProduct)?.macroNodes() ?? []
             try await buildXCFrameworks(
                 target,
-                loadPluginExecutables: macroNodes.compactMap { macros[$0.target.name]?.absoluteString },
+                loadPluginExecutables: macroNodes.compactMap { pluginExecutables[$0.target.name] },
                 outputDir: outputDir,
                 buildOptionsMatrix: buildOptionsMatrix
             )
@@ -234,7 +229,7 @@ struct FrameworkProducer {
     @discardableResult
     private func buildXCFrameworks(
         _ target: CacheSystem.CacheTarget,
-        loadPluginExecutables: [String],
+        loadPluginExecutables: [PluginExecutable],
         outputDir: URL,
         buildOptionsMatrix: [String: BuildOptions]
     ) async throws -> Set<CacheSystem.CacheTarget> {
@@ -250,7 +245,7 @@ struct FrameworkProducer {
             )
             try await compiler.createXCFramework(
                 buildProduct: product,
-                loadPluginExecutable: loadPluginExecutables,
+                loadPluginExecutables: loadPluginExecutables,
                 outputDirectory: outputDir,
                 overwrite: overwrite
             )

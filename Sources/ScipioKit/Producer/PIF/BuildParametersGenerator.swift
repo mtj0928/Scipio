@@ -38,7 +38,7 @@ struct BuildParametersGenerator {
     func generate(
         for sdk: SDK,
         buildParameters: BuildParameters,
-        loadPluginExecutables: [String],
+        loadPluginExecutables: [PluginExecutable],
         destinationDir: AbsolutePath
     ) throws -> AbsolutePath {
         #if compiler(>=6.0)
@@ -79,7 +79,7 @@ struct BuildParametersGenerator {
         settings["OTHER_SWIFT_FLAGS"] = expandFlags(
             buildParameters.toolchain.extraFlags.swiftCompilerFlags,
             buildParameters.flags.swiftCompilerFlags.map { $0.spm_shellEscaped() },
-            loadPluginExecutables.flatMap { ["-load-plugin-executable", $0] }
+            loadPluginExecutables.flatMap { ["-load-plugin-executable", $0.compilerOption] }
         )
         settings["OTHER_LDFLAGS"] = expandFlags(
             buildParameters.flags.linkerFlags.map { $0.spm_shellEscaped() }

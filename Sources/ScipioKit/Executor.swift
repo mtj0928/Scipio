@@ -1,6 +1,7 @@
 import Foundation
 import class TSCBasic.Process
 import struct TSCBasic.ProcessResult
+import struct TSCBasic.AbsolutePath
 
 protocol Executor {
     @discardableResult
@@ -112,6 +113,7 @@ struct ProcessExecutor<Decoder: ErrorDecoder>: Executor {
 
     var streamOutput: (([UInt8]) -> Void)?
     var collectsOutput: Bool = true
+    var workingDirectory: AbsolutePath?
 
     func execute(_ arguments: [String]) async throws -> ExecutorResult {
         logger.debug("\(arguments.joined(separator: " "))")
@@ -132,11 +134,18 @@ struct ProcessExecutor<Decoder: ErrorDecoder>: Executor {
             }
         )
 
-        let process = Process(
-            arguments: arguments,
-            outputRedirection: outputRedirection
-        )
-
+        let process = if let workingDirectory {
+            Process(
+                arguments: arguments,
+                workingDirectory: workingDirectory,
+                outputRedirection: outputRedirection
+            )
+        } else {
+            Process(
+                arguments: arguments,
+                outputRedirection: outputRedirection
+            )
+        }
         var result: ProcessResult
         do {
             try process.launch()

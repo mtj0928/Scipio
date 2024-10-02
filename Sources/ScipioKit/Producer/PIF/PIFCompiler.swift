@@ -47,7 +47,7 @@ struct PIFCompiler: Compiler {
 
     func createXCFramework(
         buildProduct: BuildProduct,
-        loadPluginExecutable: [String],
+        loadPluginExecutables: [PluginExecutable],
         outputDirectory: URL,
         overwrite: Bool
     ) async throws {
@@ -79,7 +79,7 @@ struct PIFCompiler: Compiler {
             let buildParametersPath = try buildParametersGenerator.generate(
                 for: sdk,
                 buildParameters: buildParameters,
-                loadPluginExecutables: loadPluginExecutable,
+                loadPluginExecutables: loadPluginExecutables,
                 destinationDir: descriptionPackage.workspaceDirectory
             )
 
@@ -120,6 +120,11 @@ struct PIFCompiler: Compiler {
             debugSymbols: debugSymbolPaths,
             outputPath: outputXCFrameworkPath
         )
+
+        if !loadPluginExecutables.isEmpty {
+            let executablePaths = loadPluginExecutables.map(\.compilerOption)
+            logger.info("📣 \(target.name) uses Swift macro, please pass \(executablePaths.joined(separator: ",")) to -load-plugin-executable")
+        }
     }
 
     private func makeBuildParameters(toolchain: UserToolchain) throws -> BuildParameters {
