@@ -35,7 +35,12 @@ struct BuildParametersGenerator {
         self.fileSystem = fileSystem
     }
 
-    func generate(for sdk: SDK, buildParameters: BuildParameters, destinationDir: AbsolutePath) throws -> AbsolutePath {
+    func generate(
+        for sdk: SDK,
+        buildParameters: BuildParameters,
+        loadPluginExecutables: [PluginExecutable],
+        destinationDir: AbsolutePath
+    ) throws -> AbsolutePath {
         #if compiler(>=6.0)
         let targetArchitecture = buildParameters.triple.arch?.rawValue ?? "arm64"
         #elseif swift(>=5.10)
@@ -73,7 +78,8 @@ struct BuildParametersGenerator {
         )
         settings["OTHER_SWIFT_FLAGS"] = expandFlags(
             buildParameters.toolchain.extraFlags.swiftCompilerFlags,
-            buildParameters.flags.swiftCompilerFlags.map { $0.spm_shellEscaped() }
+            buildParameters.flags.swiftCompilerFlags.map { $0.spm_shellEscaped() },
+            loadPluginExecutables.flatMap { ["-load-plugin-executable", $0.compilerOption] }
         )
         settings["OTHER_LDFLAGS"] = expandFlags(
             buildParameters.flags.linkerFlags.map { $0.spm_shellEscaped() }

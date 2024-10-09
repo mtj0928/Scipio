@@ -149,7 +149,7 @@ struct DescriptionPackage {
 }
 
 extension DescriptionPackage {
-    func resolveBuildProducts() throws -> OrderedSet<BuildProduct> {
+    func resolveBuildProductsDependencyGraph() throws -> ScipioPackageDependencyGraph {
         let resolver = BuildProductsResolver(descriptionPackage: self)
         return try resolver.resolveBuildProducts()
     }
@@ -199,7 +199,7 @@ private final class BuildProductsResolver {
         self.descriptionPackage = descriptionPackage
     }
 
-    func resolveBuildProducts() throws -> OrderedSet<BuildProduct> {
+    func resolveBuildProducts() throws -> ScipioPackageDependencyGraph {
         let targetsToBuild = try targetsToBuild()
         var products = try targetsToBuild.flatMap(resolveBuildProduct(from:))
 
@@ -236,7 +236,9 @@ private final class BuildProductsResolver {
             }
         }
 
-        return OrderedSet(products.reversed())
+        let reversedProducts: [BuildProduct] = products.reversed()
+
+        return ScipioPackageDependencyGraph(products)
     }
 
     private func targetsToBuild() throws -> [ScipioResolvedModule] {

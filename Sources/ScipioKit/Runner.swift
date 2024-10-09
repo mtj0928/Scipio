@@ -103,7 +103,13 @@ public struct Runner {
             buildOptionsMatrix: buildOptionsMatrix,
             cacheMode: options.cacheMode,
             overwrite: options.overwrite,
-            outputDir: outputDir
+            outputDir: outputDir,
+            macroProducer: MacroProducer(
+                descriptionPackage: descriptionPackage,
+                outputDirectory: outputDir.deletingLastPathComponent().appending(component: "Plugins"),
+                packageDirectory: descriptionPackage.packageDirectory.asURL,
+                fileSystem: localFileSystem
+            )
         )
         do {
             try await producer.produce()

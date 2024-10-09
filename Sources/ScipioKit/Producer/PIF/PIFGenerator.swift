@@ -44,11 +44,26 @@ struct PIFGenerator {
         self.fileSystem = fileSystem
     }
 
-    private func generatePIF() throws -> PIF.TopLevelObject {
+    private func generatePIFForLibrary() throws -> PIF.TopLevelObject {
         // A constructor of PIFBuilder is concealed. So use JSON is only way to get PIF structs.
         let jsonString = try PIFBuilder.generatePIF(
             buildParameters: buildParameters,
-            packageGraph: descriptionPackage.graph,
+            packageGraph: removeMacroInformation(from: descriptionPackage.graph),
+            fileSystem: localFileSystem,
+            observabilityScope: makeObservabilitySystem().topScope,
+            preservePIFModelStructure: true
+        )
+        let data = jsonString.data(using: .utf8)!
+        let jsonDecoder = JSONDecoder.makeWithDefaults()
+        return try jsonDecoder.decode(PIF.TopLevelObject.self, from: data)
+    }
+
+    private func generatePIFForMacro() throws -> PIF.TopLevelObject {
+        // A constructor of PIFBuilder is concealed. So use JSON is only way to get PIF structs.
+        let packageGraph = try descriptionPackage.graph.transformMacroTargetToExecutable()
+        let jsonString = try PIFBuilder.generatePIF(
+            buildParameters: buildParameters,
+            packageGraph: packageGraph,
             fileSystem: localFileSystem,
             observabilityScope: makeObservabilitySystem().topScope,
             preservePIFModelStructure: true
@@ -59,7 +74,7 @@ struct PIFGenerator {
     }
 
     func generateJSON(for sdk: SDK) throws -> AbsolutePath {
-        let topLevelObject = modify(try generatePIF(), for: sdk)
+        let topLevelObject = modify(try generatePIFForLibrary(), for: sdk)
 
         try PIF.sign(topLevelObject.workspace)
         let encoder = JSONEncoder.makeWithDefaults()
@@ -68,6 +83,20 @@ struct PIFGenerator {
         let newJSONData = try encoder.encode(topLevelObject)
         let path = descriptionPackage.workspaceDirectory
             .appending(component: "manifest-\(descriptionPackage.name)-\(sdk.settingValue).pif")
+        try fileSystem.writeFileContents(path.spmAbsolutePath, data: newJSONData)
+        return path
+    }
+
+    func generateJSONForMacro() throws -> AbsolutePath {
+        let topLevelObject = try generatePIFForMacro()
+
+        try PIF.sign(topLevelObject.workspace)
+        let encoder = JSONEncoder.makeWithDefaults()
+        encoder.userInfo[.encodeForXCBuild] = true
+
+        let newJSONData = try encoder.encode(topLevelObject)
+        let path = descriptionPackage.workspaceDirectory
+            .appending(component: "manifest-\(descriptionPackage.name)-macro-.pif")
         try fileSystem.writeFileContents(path.spmAbsolutePath, data: newJSONData)
         return path
     }
@@ -320,7 +349,7 @@ extension PIF.TopLevelObject: Decodable {
 
 #endif
 
-extension AbsolutePath {
+extension TSCBasic.AbsolutePath {
     fileprivate var moduleEscapedPathString: String {
         return self.pathString.replacingOccurrences(of: "\\", with: "\\\\")
     }

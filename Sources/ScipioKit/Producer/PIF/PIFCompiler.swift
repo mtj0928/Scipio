@@ -45,7 +45,56 @@ struct PIFCompiler: Compiler {
         return try await toolchainGenerator.makeToolChain(sdk: sdk)
     }
 
-    func createXCFramework(buildProduct: BuildProduct, outputDirectory: URL, overwrite: Bool) async throws {
+    func createMacroExecutable(
+        buildProduct: BuildProduct,
+        outputDirectory: URL,
+        overwrite: Bool
+    ) async throws {
+        let target = buildProduct.target
+        // Build frameworks for each SDK
+        logger.info("📦 Building macro target \(target.name)")
+
+        let xcBuildClient: XCBuildClient = .init(
+            package: descriptionPackage,
+            buildProduct: buildProduct,
+            buildOptions: buildOptions,
+            configuration: buildOptions.buildConfiguration
+        )
+        let toolchain = try await makeToolchain(for: .macOS)
+        let buildParameters = try makeBuildParameters(toolchain: toolchain)
+
+        let generator = try PIFGenerator(
+            package: descriptionPackage,
+            buildParameters: buildParameters,
+            buildOptions: buildOptions,
+            buildOptionsMatrix: buildOptionsMatrix
+        )
+        let pifPath = try generator.generateJSONForMacro()
+        let buildParametersPath = try buildParametersGenerator.generate(
+            for: .macOS,
+            buildParameters: buildParameters,
+            loadPluginExecutables: [],
+            destinationDir: descriptionPackage.workspaceDirectory
+        )
+
+        do {
+            try await xcBuildClient.buildExecutable(
+                sdk: .macOS,
+                pifPath: pifPath,
+                buildParametersPath: buildParametersPath
+            )
+        } catch {
+            logger.error("Unable to build", metadata: .color(.red))
+            logger.error(error)
+        }
+    }
+
+    func createXCFramework(
+        buildProduct: BuildProduct,
+        loadPluginExecutables: [PluginExecutable],
+        outputDirectory: URL,
+        overwrite: Bool
+    ) async throws {
         let sdks = buildOptions.sdks
         let sdkNames = sdks.map(\.displayName).joined(separator: ", ")
         let target = buildProduct.target
@@ -74,6 +123,7 @@ struct PIFCompiler: Compiler {
             let buildParametersPath = try buildParametersGenerator.generate(
                 for: sdk,
                 buildParameters: buildParameters,
+                loadPluginExecutables: loadPluginExecutables,
                 destinationDir: descriptionPackage.workspaceDirectory
             )
 
@@ -114,6 +164,11 @@ struct PIFCompiler: Compiler {
             debugSymbols: debugSymbolPaths,
             outputPath: outputXCFrameworkPath
         )
+
+        if !loadPluginExecutables.isEmpty {
+            let executablePaths = loadPluginExecutables.map(\.compilerOption)
+            logger.info("📣 \(target.name) uses Swift macro, please pass \(executablePaths.joined(separator: ",")) to -load-plugin-executable")
+        }
     }
 
     private func makeBuildParameters(toolchain: UserToolchain) throws -> BuildParameters {

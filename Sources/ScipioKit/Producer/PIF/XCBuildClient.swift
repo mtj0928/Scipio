@@ -47,6 +47,31 @@ struct XCBuildClient {
         return "\(productName)_\(String(productName.hash, radix: 16, uppercase: true))_PackageProduct"
     }
 
+    func buildExecutable(
+        sdk: SDK,
+        pifPath: AbsolutePath,
+        buildParametersPath: AbsolutePath
+    ) async throws {
+        let xcbuildPath = try await fetchXCBuildPath()
+
+        let executor = XCBuildExecutor(xcbuildPath: xcbuildPath)
+        try await executor.build(
+            pifPath: pifPath,
+            configuration: configuration,
+            derivedDataPath: descriptionPackage.derivedDataPath,
+            buildParametersPath: buildParametersPath,
+            target: buildProduct.target
+        )
+
+        try assembleFramework(sdk: sdk)
+
+        // Copy modulemap to built frameworks
+        // xcbuild generates modulemap for each frameworks
+        // However, these are not includes in Frameworks
+        // So they should be copied into frameworks manually.
+        //        try copyModulemap(for: sdk)
+    }
+
     func buildFramework(
         sdk: SDK,
         pifPath: AbsolutePath,

@@ -5,9 +5,12 @@ import TSCBasic
 protocol Compiler {
     var descriptionPackage: DescriptionPackage { get }
 
-    func createXCFramework(buildProduct: BuildProduct,
-                           outputDirectory: URL,
-                           overwrite: Bool) async throws
+    func createXCFramework(
+        buildProduct: BuildProduct,
+        loadPluginExecutables: [PluginExecutable],
+        outputDirectory: URL,
+        overwrite: Bool
+    ) async throws
 }
 
 extension Compiler {
