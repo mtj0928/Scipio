@@ -105,6 +105,7 @@ public struct Runner {
             overwrite: options.overwrite,
             outputDir: outputDir,
             macroProducer: MacroProducer(
+                descriptionPackage: descriptionPackage,
                 outputDirectory: outputDir.deletingLastPathComponent().appending(component: "Plugins"),
                 packageDirectory: descriptionPackage.packageDirectory.asURL,
                 fileSystem: localFileSystem

@@ -45,6 +45,50 @@ struct PIFCompiler: Compiler {
         return try await toolchainGenerator.makeToolChain(sdk: sdk)
     }
 
+    func createMacroExecutable(
+        buildProduct: BuildProduct,
+        outputDirectory: URL,
+        overwrite: Bool
+    ) async throws {
+        let target = buildProduct.target
+        // Build frameworks for each SDK
+        logger.info("📦 Building macro target \(target.name)")
+
+        let xcBuildClient: XCBuildClient = .init(
+            package: descriptionPackage,
+            buildProduct: buildProduct,
+            buildOptions: buildOptions,
+            configuration: buildOptions.buildConfiguration
+        )
+        let toolchain = try await makeToolchain(for: .macOS)
+        let buildParameters = try makeBuildParameters(toolchain: toolchain)
+
+        let generator = try PIFGenerator(
+            package: descriptionPackage,
+            buildParameters: buildParameters,
+            buildOptions: buildOptions,
+            buildOptionsMatrix: buildOptionsMatrix
+        )
+        let pifPath = try generator.generateJSONForMacro()
+        let buildParametersPath = try buildParametersGenerator.generate(
+            for: .macOS,
+            buildParameters: buildParameters,
+            loadPluginExecutables: [],
+            destinationDir: descriptionPackage.workspaceDirectory
+        )
+
+        do {
+            try await xcBuildClient.buildExecutable(
+                sdk: .macOS,
+                pifPath: pifPath,
+                buildParametersPath: buildParametersPath
+            )
+        } catch {
+            logger.error("Unable to build", metadata: .color(.red))
+            logger.error(error)
+        }
+    }
+
     func createXCFramework(
         buildProduct: BuildProduct,
         loadPluginExecutables: [PluginExecutable],
